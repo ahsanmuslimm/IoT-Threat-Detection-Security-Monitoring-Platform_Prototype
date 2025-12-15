@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Anomaly Detector Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.2.0"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .alert-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .alert-item {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+
+        .alert-item.normal {
+            background: #e8f5e8;
+            border-left-color: #4caf50;
+        }
+
+        .alert-item.ddos {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-active {
+            background: #4caf50;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+
+        .status-inactive {
+            background: #f44336;
+        }
+
+        .realtime-data {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .packet-stream {
+            background: #1a1a1a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            padding: 15px;
+            border-radius: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .packet-entry {
+            margin-bottom: 5px;
+        }
+
+        .packet-entry.ddos {
+            color: #ff4444;
+        }
+
+        .packet-entry.normal {
+            color: #44ff44;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: white;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ IoT Anomaly Detector Dashboard</h1>
+            <p>Real-time Network Security Monitoring & Threat Detection</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <span class="stat-value" id="totalPackets">0</span>
+                <span class="stat-label">Total Packets</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value" id="alertsTriggered">0</span>
+                <span class="stat-label">Alerts Triggered</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value" id="threatLevel">LOW</span>
+                <span class="stat-label">Current Threat Level</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value" id="uptime">00:00:00</span>
+                <span class="stat-label">Monitoring Uptime</span>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>📊 Anomaly Score Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="anomalyChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🔥 Threat Detection Trends</h3>
+                <div class="chart-container">
+                    <canvas id="threatChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📈 Packet Size Analysis</h3>
+                <div class="chart-container">
+                    <canvas id="packetSizeChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🚨 Recent Alerts</h3>
+                <div class="alert-list" id="alertList">
+                    <div class="alert-item normal">
+                        <span class="status-indicator status-active"></span>
+                        System initialized - Monitoring active
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="realtime-data">
+            <h3>🔴 Live Packet Stream</h3>
+            <div class="packet-stream" id="packetStream">
+                Waiting for packet data...<br>
+                Monitoring system initializing...<br>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>IoT Anomaly Detector v1.0 | Real-time Security Monitoring Dashboard</p>
+        </div>
+    </div>
+
+    <script>
+        // Dashboard data
+        let dashboardData = {
+            totalPackets: 0,
+            alertsTriggered: 0,
+            threatLevel: 'LOW',
+            uptime: 0,
+            anomalyScores: [],
+            threatTypes: { NORMAL: 0, DDOS: 0, SPYWARE: 0, INTRUSION: 0 },
+            packetSizes: [],
+            alerts: []
+        };
+
+        // Initialize charts
+        const anomalyChart = new Chart(document.getElementById('anomalyChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Anomaly Score',
+                    data: [],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1.0
+                    }
+                }
+            }
+        });
+
+        const threatChart = new Chart(document.getElementById('threatChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['NORMAL', 'DDOS', 'SPYWARE', 'INTRUSION'],
+                datasets: [{
+                    data: [0, 0, 0, 0],
+                    backgroundColor: ['#4caf50', '#f44336', '#ff9800', '#9c27b0'],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+
+        const packetSizeChart = new Chart(document.getElementById('packetSizeChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Packet Size (bytes)',
+                    data: [],
+                    backgroundColor: '#667eea',
+                    borderColor: '#5a67d8',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // WebSocket connection for real-time data
+        let ws;
+        let reconnectInterval;
+
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:8080');
+
+            ws.onopen = function(event) {
+                console.log('Connected to monitoring server');
+                document.getElementById('packetStream').innerHTML += 'Connected to monitoring server...<br>';
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                updateDashboard(data);
+            };
+
+            ws.onclose = function(event) {
+                console.log('Disconnected from monitoring server');
+                document.getElementById('packetStream').innerHTML += 'Disconnected from monitoring server...<br>';
+                // Attempt to reconnect
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function updateDashboard(data) {
+            // Update stats
+            dashboardData.totalPackets = data.packetCount;
+            document.getElementById('totalPackets').textContent = dashboardData.totalPackets;
+
+            if (data.threat !== 'NORMAL') {
+                dashboardData.alertsTriggered++;
+                document.getElementById('alertsTriggered').textContent = dashboardData.alertsTriggered;
+            }
+
+            // Update threat level
+            const threatLevels = { NORMAL: 'LOW', DDOS: 'HIGH', SPYWARE: 'MEDIUM', INTRUSION: 'HIGH' };
+            dashboardData.threatLevel = threatLevels[data.threat] || 'LOW';
+            document.getElementById('threatLevel').textContent = dashboardData.threatLevel;
+
+            // Update charts data
+            dashboardData.anomalyScores.push(data.anomalyScore);
+            if (dashboardData.anomalyScores.length > 20) {
+                dashboardData.anomalyScores.shift();
+            }
+
+            dashboardData.threatTypes[data.threat]++;
+
+            dashboardData.packetSizes.push(data.packetSize);
+            if (dashboardData.packetSizes.length > 10) {
+                dashboardData.packetSizes.shift();
+            }
+
+            // Update charts
+            anomalyChart.data.labels = Array.from({length: dashboardData.anomalyScores.length}, (_, i) => i + 1);
+            anomalyChart.data.datasets[0].data = dashboardData.anomalyScores;
+            anomalyChart.update();
+
+            threatChart.data.datasets[0].data = Object.values(dashboardData.threatTypes);
+            threatChart.update();
+
+            packetSizeChart.data.labels = Array.from({length: dashboardData.packetSizes.length}, (_, i) => `Packet ${dashboardData.totalPackets - dashboardData.packetSizes.length + i + 1}`);
+            packetSizeChart.data.datasets[0].data = dashboardData.packetSizes;
+            packetSizeChart.update();
+
+            // Update packet stream
+            const packetStream = document.getElementById('packetStream');
+            const packetClass = data.threat.toLowerCase();
+            const packetEntry = document.createElement('div');
+            packetEntry.className = `packet-entry ${packetClass}`;
+            packetEntry.innerHTML = `[${data.packetCount}] ${data.sourceIP} → ${data.destIP} | Size: ${data.packetSize} | Score: ${data.anomalyScore.toFixed(2)} | Threat: ${data.threat}`;
+            packetStream.appendChild(packetEntry);
+            packetStream.scrollTop = packetStream.scrollHeight;
+
+            // Update alerts
+            if (data.threat !== 'NORMAL') {
+                const alertList = document.getElementById('alertList');
+                const alertItem = document.createElement('div');
+                alertItem.className = `alert-item ${data.threat.toLowerCase()}`;
+                alertItem.innerHTML = `<span class="status-indicator status-active"></span><strong>${data.threat}</strong> detected from ${data.sourceIP} (Packet #${data.packetCount})`;
+                alertList.insertBefore(alertItem, alertList.firstChild);
+
+                // Keep only last 10 alerts
+                while (alertList.children.length > 10) {
+                    alertList.removeChild(alertList.lastChild);
+                }
+            }
+        }
+
+        // Uptime counter
+        setInterval(() => {
+            dashboardData.uptime++;
+            const hours = Math.floor(dashboardData.uptime / 3600);
+            const minutes = Math.floor((dashboardData.uptime % 3600) / 60);
+            const seconds = dashboardData.uptime % 60;
+            document.getElementById('uptime').textContent =
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }, 1000);
+
+        // Connect to WebSocket on page load
+        window.onload = function() {
+            connectWebSocket();
+        };
+    </script>
+</body>
+</html>
